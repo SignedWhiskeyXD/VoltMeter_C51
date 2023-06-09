@@ -11,7 +11,7 @@ sbit SPARK = P3^5;  //蜂鸣器位
 unsigned char i;    //循环标志
 uint8_t regRead;
 uint8_t counterUp = 0, counterDown = 0;
-const uint8_t BAR = 1;
+const uint8_t BAR = 3;
 
 void UART_Init() // UART串口用的T1定时器，模式是8位自动重装载，波特率9600bps@12.000MHz
 {
@@ -45,10 +45,14 @@ void SetRange(uint8_t flag)
 
     if(flag){
         regRead -= 0x08;
+        if(toSend[3] < '3')
+            regRead -= 0x08;
         toSend[3]++;
     }
     else{
         regRead += 0x08;
+        if(toSend[3] < '4')
+            regRead += 0x08;
         toSend[3]--;
     }
     
@@ -77,7 +81,7 @@ void SelectRange()
             SetRange(1);
         }
     }
-    else if(rawValue < rangeDown[toSend[3] - '0'] && toSend[3] != '2'){
+    else if(rawValue < rangeDown[toSend[3] - '0'] && toSend[3] != '0'){
         counterDown++;
         if(counterDown >= BAR){
             SetRange(0);
@@ -124,11 +128,7 @@ void main()
         UART_SendStr(toSend, 6);    //发送数据帧
         SelectRange();              //调用量程自动调整算法
 
-#ifdef WSK_DBG
         bsp_DelayMS(25);
-#else
-        bsp_DelayMS(500);
-#endif
     }
 }
 
