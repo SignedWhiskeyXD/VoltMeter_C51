@@ -1,14 +1,17 @@
 #include <reg52.h>
 #include "bsp.h"
-#define WSK_DBG     //调试所使用的代码与实际运行有所区别
+//#define WSK_DBG     //调试所使用的代码与实际运行有所区别
 
 unsigned int rawValue = 0;      //AD读数原始值，16位无符号整型
 char recvBuffer;                //串口接受区单字节缓冲
-unsigned char toSend[6] = {'W', 'S', 'K', '0', '\0', '\0'};             //数据帧
+unsigned char toSend[6] = {'W', 'S', 'K', '4', '\0', '\0'};             //数据帧
 const unsigned int rangeDown[5] = {0, 12000, 12000, 12000, 25000};      //量程升高阈值     
 const unsigned int rangeUp[5]   = {54000, 54000, 54000, 54000, 65535};  //量程降低阈值
 sbit SPARK = P3^5;  //蜂鸣器位
 unsigned char i;    //循环标志
+uint8_t regRead;
+uint8_t counterUp = 0, counterDown = 0;
+const uint8_t BAR = 1;
 
 void UART_Init() // UART串口用的T1定时器，模式是8位自动重装载，波特率9600bps@12.000MHz
 {
@@ -34,6 +37,24 @@ void UART_SendStr(char* str, unsigned char length)
     ES = 1;
 }
 
+void SetRange(uint8_t flag)
+{
+    regRead = TM7705_ReadReg(16);
+    if(regRead < 0x08 && flag == 1) return;
+    if(regRead >= 0x38 && flag == 0) return;
+
+    if(flag){
+        regRead -= 0x08;
+        toSend[3]++;
+    }
+    else{
+        regRead += 0x08;
+        toSend[3]--;
+    }
+    
+    TM7705_WriteReg(16, regRead);
+}
+
 void SelectRange()
 {
 #ifdef WSK_DBG  //模拟量程切换
@@ -50,7 +71,23 @@ void SelectRange()
         rawValue *= 2;
     }
 #else           //实际量程切换
-    
+    if(rawValue > rangeUp[toSend[3] - '0'] && toSend[3] != '4'){
+        counterUp++;
+        if(counterUp >= BAR){
+            SetRange(1);
+        }
+    }
+    else if(rawValue < rangeDown[toSend[3] - '0'] && toSend[3] != '2'){
+        counterDown++;
+        if(counterDown >= BAR){
+            SetRange(0);
+        }
+    }
+    else{
+        counterDown = 0;
+        counterUp = 0;
+    }
+
 #endif
 }
 
@@ -63,7 +100,8 @@ void main()
     UART_Init();
 #ifndef WSK_DBG     //非调试状态，初始化AD7705芯片，并自校准
     bsp_InitTM7705();
-    TM7705_CalibSelf(1);
+    TM7705_CalibSelf(2);
+
 #endif
     P0 = 0xff;      //完成初始化后熄灭LED
     while (1){
@@ -73,29 +111,37 @@ void main()
             toSend[3] = '0';
             rawValue = 0;
         }
-#else              
-        rawValue = TM7705_ReadAdc(1);   //从AD7705读取转换值
-#endif
         if(rawValue > 52428 && toSend[3] == '4')
             P0 = 0x00;
         else
             P0 = 0xFF;
-
+#else              
+        rawValue = TM7705_ReadAdc(2);   //从AD7705读取转换值
+#endif
+        
         toSend[4] = rawValue >> 8;  //原始值高8位装入数据帧第5字节
         toSend[5] = rawValue;       //原始值低8位装入数据帧第6字节
         UART_SendStr(toSend, 6);    //发送数据帧
         SelectRange();              //调用量程自动调整算法
+
+#ifdef WSK_DBG
         bsp_DelayMS(25);
+#else
+        bsp_DelayMS(500);
+#endif
     }
 }
 
 void serial() interrupt 4
 {
+    P0 = 0x00;
     ES = 0;
     RI = 0;
     recvBuffer = SBUF;
     switch(recvBuffer)
     {
+        case '0':
+            TM7705_SytemCalibZero(2);
         case '1': P0 = 0xfe; break;
         case '2': P0 = 0xfd; break;
         case '3': P0 = 0xfb; break;
@@ -107,4 +153,5 @@ void serial() interrupt 4
         default: P0 = 0xff; break;
     }
     ES = 1;
+    P0 = 0xff;
 }
