@@ -109,18 +109,19 @@ void main()
             toSend[3] = '0';
             rawValue = 0;
         }
-        if(rawValue > 52428 && toSend[3] == '4')
-            P0 = 0x00;
-        else
-            P0 = 0xFF;
 #else              
         rawValue = TM7705_ReadAdc(2);   //从AD7705读取转换值
 #endif
         toSend[4] = rawValue >> 8;  //原始值高8位装入数据帧第5字节
         toSend[5] = rawValue;       //原始值低8位装入数据帧第6字节
         UART_SendStr(toSend, 6);    //发送数据帧
-        SelectRange();              //调用量程自动调整算法
 
+        if(rawValue > 52428 && toSend[3] == '4')    //大于4V报警
+            P0 = 0x00;
+        else
+            P0 = 0xFF;
+
+        SelectRange();              //调用量程自动调整算法
         bsp_DelayMS(25);
     }
 }
