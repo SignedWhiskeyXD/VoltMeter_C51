@@ -1,12 +1,13 @@
 #include <reg52.h>
 #include "bsp.h"
-//#define WSK_DBG     //调试所使用的代码与实际运行有所区别
 
 uint16_t rawValue = 0;      //AD读数原始值，16位无符号整型
 char recvBuffer;                //串口接受区单字节缓冲
-uint8_t toSend[6] = {'W', 'S', 'K', '4', '\0', '\0'};             //数据帧
-const uint16_t rangeDown[5] = {0, 12000, 12000, 12000, 25000};      //量程升高阈值     
-const uint16_t rangeUp[5]   = {54000, 54000, 54000, 54000, 65535};  //量程降低阈值
+uint8_t curRange  = '4';
+uint8_t toSend[6] = {'W', 'S', 'K', 1, '\0', '\0'};             //数据帧
+const uint8_t  xdata rangePGAGain[5] = {128, 32, 8, 2, 1};
+const uint16_t xdata rangeDown[5] = {0, 12000, 12000, 12000, 25000};      //量程升高阈值     
+const uint16_t xdata rangeUp[5]   = {54000, 54000, 54000, 54000, 65535};  //量程降低阈值
 sbit SPARK = P3^5;  //蜂鸣器位
 uint8_t i;    //循环标志
 uint8_t regRead;
@@ -44,41 +45,28 @@ void SetRange(uint8_t flag)
 
     if(flag){
         regRead -= 0x08;
-        if(toSend[3] < '3')
+        if(curRange < '3')
             regRead -= 0x08;
-        toSend[3]++;
+        curRange++;
     }
     else{
         regRead += 0x08;
-        if(toSend[3] < '4')
+        if(curRange < '4')
             regRead += 0x08;
-        toSend[3]--;
+        curRange--;
     }
+    toSend[3] = rangePGAGain[curRange - '0'];
     TM7705_WriteReg(16, regRead);
 }
 
 void SelectRange()
 {
-#ifdef WSK_DBG  //模拟量程切换
-    if(rawValue > rangeUp[toSend[3] - '0'] && toSend[3] != '4'){
-        if(toSend[3] < '3')
-            rawValue /= 2;
-        ++toSend[3];
-        rawValue /= 2;
-    }
-    else if(rawValue < rangeDown[toSend[3] - '0'] && toSend[3] != '0'){
-        if(toSend[3] < '4')
-            rawValue *= 2;
-        --toSend[3];
-        rawValue *= 2;
-    }
-#else           //实际量程切换
-    if(rawValue > rangeUp[toSend[3] - '0'] && toSend[3] != '4'){
+    if(rawValue > rangeUp[curRange - '0'] && curRange != '4'){
         counterUp++;
         if(counterUp >= BAR)
             SetRange(1);
     }
-    else if(rawValue < rangeDown[toSend[3] - '0'] && toSend[3] != '0'){
+    else if(rawValue < rangeDown[curRange - '0'] && curRange != '0'){
         counterDown++;
         if(counterDown >= BAR)
             SetRange(0);
@@ -87,7 +75,6 @@ void SelectRange()
         counterDown = 0;
         counterUp = 0;
     }
-#endif
 }
 
 void main()
@@ -96,27 +83,19 @@ void main()
     EA = 1;         //允许总中断
     ES = 1;         //允许串行中断
     P0 = 0x00;      //初始化前点亮所有LED
-    UART_Init();    //初始化串口
-#ifndef WSK_DBG     //非调试状态，初始化AD7705芯片，并自校准
-    bsp_InitTM7705();
+    UART_Init();    //初始化串口       
+    bsp_InitTM7705();   //初始化AD7705芯片，并自校准
     TM7705_CalibSelf(2);
-#endif
     P0 = 0xff;      //完成初始化后熄灭LED
-    while (1){
-#ifdef WSK_DBG      //模拟采样值，从最低量程开始递增
-        rawValue += 250;
-        if(toSend[3] == '4' && rawValue > 65000){
-            toSend[3] = '0';
-            rawValue = 0;
-        }
-#else              
+
+    while (1){            
         rawValue = TM7705_ReadAdc(2);   //从AD7705读取转换值
-#endif
+
         toSend[4] = rawValue >> 8;  //原始值高8位装入数据帧第5字节
         toSend[5] = rawValue;       //原始值低8位装入数据帧第6字节
         UART_SendStr(toSend, 6);    //发送数据帧
 
-        if(rawValue > 52428 && toSend[3] == '4')    //大于4V报警
+        if(rawValue > 52428 && curRange == '4')    //大于4V报警
             P0 = 0x00;
         else
             P0 = 0xFF;
