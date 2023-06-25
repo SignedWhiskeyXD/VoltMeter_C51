@@ -3,7 +3,7 @@
 
 uint16_t rawValue = 0;      //AD读数原始值，16位无符号整型
 char recvBuffer;                //串口接受区单字节缓冲
-uint8_t curRange  = '4';
+uint8_t curRange  = 4;
 uint8_t toSend[6] = {'W', 'S', 'K', 1, '\0', '\0'};             //数据帧
 const uint8_t  xdata rangePGAGain[5] = {128, 32, 8, 2, 1};
 const uint16_t xdata rangeDown[5] = {0, 12000, 12000, 12000, 25000};      //量程升高阈值     
@@ -39,34 +39,35 @@ void UART_SendStr(char* str, uint8_t length)
 
 void SetRange(uint8_t flag)
 {
+    
     regRead = TM7705_ReadReg(16);
     if(regRead < 0x08 && flag == 1) return;
     if(regRead >= 0x38 && flag == 0) return;
 
     if(flag){
         regRead -= 0x08;
-        if(curRange < '3')
+        if(curRange < 3)
             regRead -= 0x08;
         curRange++;
     }
     else{
         regRead += 0x08;
-        if(curRange < '4')
+        if(curRange < 4)
             regRead += 0x08;
         curRange--;
     }
-    toSend[3] = rangePGAGain[curRange - '0'];
+    toSend[3] = rangePGAGain[curRange];
     TM7705_WriteReg(16, regRead);
 }
 
 void SelectRange()
 {
-    if(rawValue > rangeUp[curRange - '0'] && curRange != '4'){
+    if(rawValue > rangeUp[curRange] && curRange != 4){
         counterUp++;
         if(counterUp >= BAR)
             SetRange(1);
     }
-    else if(rawValue < rangeDown[curRange - '0'] && curRange != '0'){
+    else if(rawValue < rangeDown[curRange] && curRange != 0){
         counterDown++;
         if(counterDown >= BAR)
             SetRange(0);
@@ -95,7 +96,7 @@ void main()
         toSend[5] = rawValue;       //原始值低8位装入数据帧第6字节
         UART_SendStr(toSend, 6);    //发送数据帧
 
-        if(rawValue > 52428 && curRange == '4')    //大于4V报警
+        if(rawValue > 52428 && curRange == 4)    //大于4V报警
             P0 = 0x00;
         else
             P0 = 0xFF;
