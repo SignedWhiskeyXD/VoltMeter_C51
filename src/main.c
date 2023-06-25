@@ -114,8 +114,10 @@ void serial() interrupt 4
     switch(recvBuffer){
         case '0':
             TM7705_SytemCalibZero(2);
+            break;
         case '1': 
             TM7705_SytemCalibFull(2);
+            break;
     }
     ES = 1;
     P0 = 0xff;      //Ï¨ÃðLED
