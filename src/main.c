@@ -5,6 +5,7 @@
 
 uint16_t rawValue = 0;      //AD读数原始值，16位无符号整型
 char recvBuffer;                //串口接受区单字节缓冲
+uint8_t tempReg;
 uint8_t toSend[6] = {'W', 'S', 'K', 1, '\0', '\0'};             //数据帧
 sbit SPARK = P3^5;  //蜂鸣器位
 
@@ -109,7 +110,9 @@ void main()
         else
             P0 = 0xFF;
 
+        ES = 0;
         SelectRange();              //调用量程自动调整算法
+        ES = 1;
         bsp_DelayMS(25);
     }
 }
@@ -123,7 +126,12 @@ void serial() interrupt 4
     switch(recvBuffer){
         // 收到指令，执行零位校准
         case '0':
+            tempReg = TM7705_ReadReg(REG_SETTING);
+            TM7705_WriteReg(REG_SETTING, tempReg & 0xC7u);
+            bsp_DelayMS(25);
             TM7705_SytemCalibZero(AD_CHANNEL);
+            bsp_DelayMS(25);
+            TM7705_WriteReg(REG_SETTING, tempReg);
             break;
         // 收到指令，执行满偏校准
         case '1': 
